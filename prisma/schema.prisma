@@ -6,3 +6,172 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum Role {
+  ATTENDEE
+  ORGANIZER
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum TicketStatus {
+  VALID
+  USED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(ATTENDEE)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  events   Event[]
+  orders   Order[]
+  tickets  Ticket[]
+  checkIns CheckIn[]
+  badges   UserBadge[]
+}
+
+model Event {
+  id          String      @id @default(cuid())
+  organizerId String
+  organizer   User        @relation(fields: [organizerId], references: [id])
+  title       String
+  description String
+  category    String
+  venue       String
+  city        String
+  imageUrl    String?
+  startsAt    DateTime
+  endsAt      DateTime
+  status      EventStatus @default(DRAFT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tiers    TicketTier[]
+  orders   Order[]
+  tickets  Ticket[]
+  checkIns CheckIn[]
+
+  @@index([status, startsAt])
+  @@index([organizerId])
+}
+
+model TicketTier {
+  id           String    @id @default(cuid())
+  eventId      String
+  event        Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  priceCents   Int
+  quantity     Int
+  quantitySold Int       @default(0)
+  salesStart   DateTime?
+  salesEnd     DateTime?
+  createdAt    DateTime  @default(now())
+
+  orderItems OrderItem[]
+  tickets    Ticket[]
+
+  @@index([eventId])
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  eventId         String
+  event           Event       @relation(fields: [eventId], references: [id])
+  status          OrderStatus @default(PENDING)
+  totalCents      Int
+  currency        String      @default("usd")
+  stripeSessionId String?     @unique
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items   OrderItem[]
+  tickets Ticket[]
+
+  @@index([userId])
+  @@index([eventId])
+}
+
+model OrderItem {
+  id             String     @id @default(cuid())
+  orderId        String
+  order          Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tierId         String
+  tier           TicketTier @relation(fields: [tierId], references: [id])
+  quantity       Int
+  unitPriceCents Int
+}
+
+model Ticket {
+  id        String       @id @default(cuid())
+  code      String       @unique @default(cuid())
+  status    TicketStatus @default(VALID)
+  orderId   String
+  order     Order        @relation(fields: [orderId], references: [id])
+  tierId    String
+  tier      TicketTier   @relation(fields: [tierId], references: [id])
+  eventId   String
+  event     Event        @relation(fields: [eventId], references: [id])
+  ownerId   String
+  owner     User         @relation(fields: [ownerId], references: [id])
+  createdAt DateTime     @default(now())
+
+  checkIn CheckIn?
+
+  @@index([eventId])
+  @@index([ownerId])
+}
+
+model CheckIn {
+  id          String   @id @default(cuid())
+  ticketId    String   @unique
+  ticket      Ticket   @relation(fields: [ticketId], references: [id])
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id])
+  scannedById String
+  scannedBy   User     @relation(fields: [scannedById], references: [id])
+  checkedInAt DateTime @default(now())
+
+  @@index([eventId])
+}
+
+model Badge {
+  id          String  @id @default(cuid())
+  key         String  @unique
+  name        String
+  description String
+  iconUrl     String?
+
+  users UserBadge[]
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  badgeId   String
+  badge     Badge    @relation(fields: [badgeId], references: [id])
+  awardedAt DateTime @default(now())
+
+  @@unique([userId, badgeId])
+}
