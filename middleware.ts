@@ -1,25 +1,42 @@
-import { clerkMiddleware } from '@clerk/nextjs/server';
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
+const isOnboarding = createRouteMatcher(["/onboarding(.*)"]);
+const isOrganizerRoute = createRouteMatcher(["/organizer(.*)"]);
+const isSignedInRoute = createRouteMatcher(["/my-tickets(.*)", "/profile(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
   const path = req.nextUrl.pathname;
 
-  // Never redirect API routes or Clerk's own routes
+  // API routes and Clerk's own routes handle their own checks
   if (path.startsWith("/api") || path.startsWith("/__clerk")) {
     return NextResponse.next();
   }
 
   // Onboarding is for signed-in users only
-  if (path.startsWith("/onboarding")) {
+  if (isOnboarding(req)) {
     await auth.protect();
     return NextResponse.next();
   }
 
-  // Signed in but hasn't picked an account type yet: send them to onboarding
   const { isAuthenticated, sessionClaims } = await auth();
+
+  // Signed in but hasn't picked an account type yet
   if (isAuthenticated && !sessionClaims?.metadata?.onboardingComplete) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
+  }
+
+  // Organizer-only pages: logged-out users go to sign-in, attendees go home
+  if (isOrganizerRoute(req)) {
+    await auth.protect();
+    if (sessionClaims?.metadata?.role !== "ORGANIZER") {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
+  }
+
+  // Any signed-in user
+  if (isSignedInRoute(req)) {
+    await auth.protect();
   }
 
   return NextResponse.next();
