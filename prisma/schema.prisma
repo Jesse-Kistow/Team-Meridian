@@ -32,10 +32,19 @@ enum TicketStatus {
   CANCELLED
 }
 
+// v2: new enum
+enum NotificationType {
+  BADGE_EARNED
+  ORDER_CONFIRMED
+  EVENT_REMINDER
+  GENERAL
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
   email        String   @unique
+  organizationName String? // v2: shown on the organizer profile
   clerkId      String @unique
   role         Role     @default(ATTENDEE)
   createdAt    DateTime @default(now())
@@ -46,6 +55,7 @@ model User {
   tickets  Ticket[]
   checkIns CheckIn[]
   badges   UserBadge[]
+  notifications Notification[] // v2
 }
 
 model Event {
@@ -102,6 +112,7 @@ model Order {
   totalCents      Int
   currency        String      @default("usd")
   stripeSessionId String?     @unique
+  expiresAt       DateTime? // v2: when a PENDING order stops holding stock
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
@@ -110,6 +121,8 @@ model Order {
 
   @@index([userId])
   @@index([eventId])
+  @@index([status, expiresAt]) // v2: finding expired pending orders
+
 }
 
 model OrderItem {
@@ -174,4 +187,19 @@ model UserBadge {
   awardedAt DateTime @default(now())
 
   @@unique([userId, badgeId])
+}
+
+// v2: new model
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?
+  href      String? // where clicking it should go, e.g. "/profile"
+  readAt    DateTime? // null = unread
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
 }
