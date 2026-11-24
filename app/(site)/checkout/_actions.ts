@@ -1,6 +1,6 @@
 "use server";
 
-// app/(site)/checkout/_actions.ts  (NEW)  Steps 2 and 3: US-501 and US-502
+// app/(site)/checkout/_actions.ts  Steps 2 and 3: US-501 and US-502
 import { redirect } from "next/navigation";
 import { getCurrentDbUser } from "@/lib/current-user";
 import { CheckoutError, createPendingOrder, releaseOrder } from "@/lib/orders";
@@ -41,7 +41,7 @@ export async function startCheckout(tierId: string, quantity: number): Promise<{
         },
       })),
       success_url: `${APP_URL}/checkout/success?order=${order.id}`,
-      cancel_url: `${APP_URL}/checkout/${order.eventId}`,
+      cancel_url: `${APP_URL}/events/${order.eventId}/checkout`,
       // Stripe needs at least 30 minutes, so ask for 31 to be safe
       expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
     });

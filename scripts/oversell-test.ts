@@ -2,12 +2,13 @@
 // Proof of US-504 against a real database:
 //   1. 20 buyers try to take the last 5 tickets at the same time. Exactly 5 may win.
 //   2. An abandoned (expired) order gives its tickets back, and only once.
+//   5. Paying issues one ticket per seat, once, and a late payment either gets its tickets back or is refunded.
 // Run with:  npx tsx scripts/oversell-test.ts
 // It makes its own test rows (ids start with "test_"), so it doesn't need the seed script.
 // Like the seed script, it only runs with SEED_ALLOW=true (personal Neon branches only, never main).
 import "dotenv/config";
 import { prisma } from "../lib/prisma";
-import { createPendingOrder, releaseExpiredOrders, releaseOrder } from "../lib/orders";
+import { createPendingOrder, markOrderPaid, releaseExpiredOrders, releaseOrder } from "../lib/orders";
 
 if (process.env.SEED_ALLOW !== "true") {
   console.error("Refusing to run. Set SEED_ALLOW=true in your .env, and ONLY on your personal Neon branch (never main).");
@@ -52,6 +53,8 @@ async function setup() {
 }
 
 async function reset() {
+  await prisma.notification.deleteMany({ where: { userId: BUYER } });
+  await prisma.ticket.deleteMany({ where: { eventId: EVENT } });
   await prisma.order.deleteMany({ where: { eventId: EVENT } });
   await prisma.ticketTier.update({ where: { id: TIER }, data: { quantitySold: 0 } });
 }
@@ -110,8 +113,31 @@ async function main() {
   check("old order status", (await prisma.order.findUniqueOrThrow({ where: { id: c.id } })).status, "CANCELLED");
   check("quantitySold", await sold(), 5);
 
+  console.log("5. Paying for an order issues the tickets, once");
   await reset();
-  console.log(process.exitCode ? "FAIL: check the lines above." : "PASS: no overselling, and expired holds are released.");
+  const paid = await createPendingOrder(BUYER, TIER, 2);
+  check("markOrderPaid", await markOrderPaid(paid.id), "paid");
+  check("markOrderPaid again (webhook retry)", await markOrderPaid(paid.id), "already_paid");
+  check("tickets issued", await prisma.ticket.count({ where: { orderId: paid.id } }), 2);
+  check("order status", (await prisma.order.findUniqueOrThrow({ where: { id: paid.id } })).status, "PAID");
+  check("releaseOrder on a paid order", await releaseOrder(paid.id), false);
+  check("quantitySold", await sold(), 2);
+
+  console.log("6. A payment that arrives after the hold was released");
+  const late = await createPendingOrder(BUYER, TIER, 1);
+  await releaseOrder(late.id, "CANCELLED");
+  check("quantitySold after release", await sold(), 2);
+  check("late payment with stock left", await markOrderPaid(late.id), "paid");
+  check("quantitySold", await sold(), 3);
+  const late2 = await createPendingOrder(BUYER, TIER, 2);
+  await releaseOrder(late2.id, "CANCELLED");
+  await createPendingOrder(BUYER, TIER, 2); // someone else takes the last two
+  check("late payment with no stock left", await markOrderPaid(late2.id), "needs_refund");
+  check("its tickets", await prisma.ticket.count({ where: { orderId: late2.id } }), 0);
+  check("quantitySold", await sold(), 5);
+
+  await reset();
+  console.log(process.exitCode ? "FAIL: check the lines above." : "PASS: no overselling, expired holds are released, and paid orders get their tickets.");
 }
 
 main()

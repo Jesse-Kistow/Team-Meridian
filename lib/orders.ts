@@ -1,5 +1,6 @@
 // lib/orders.ts
-// Order creation and release. Used by checkout (Steps 1-3), the webhook (Step 4) and expiry (Step 6).
+// Order creation, release and fulfilment. Used by checkout (Steps 1-3),
+// the Stripe webhook and success page (Step 4) and expiry (Step 6).
 import { prisma } from "./prisma";
 
 // Safety cap per order. Not in the acceptance criteria; change it if you like.
@@ -10,7 +11,7 @@ export const MIN_CHARGE_CENTS = 50;
 
 // How long a PENDING order holds its tickets. Kept a little longer than the
 // Stripe Checkout session (31 minutes) so Stripe always gives up first, and a
-// payment can't complete after we've handed the tickets to someone else.
+// payment can't normally complete after we've handed the tickets to someone else.
 export const ORDER_HOLD_MINUTES = 35;
 
 // Errors that are safe to show to the buyer. Anything else is unexpected and gets a generic message.
@@ -124,4 +125,93 @@ export async function releaseExpiredOrders(
     if (await releaseOrder(order.id, "CANCELLED")) released++;
   }
   return released;
+}
+
+/** Keeps a PENDING order's tickets held with no time limit (a slow bank payment is on its way). */
+export async function holdOrderIndefinitely(orderId: string) {
+  await prisma.order.updateMany({ where: { id: orderId, status: "PENDING" }, data: { expiresAt: null } });
+}
+
+class LateOrderNoStock extends Error {}
+
+export type MarkPaidResult =
+  | "paid" // this call marked it PAID and issued the tickets
+  | "already_paid" // an earlier call (webhook retry or the success page) already did
+  | "needs_refund" // paid after its hold was released, and the tickets are gone: refund the buyer
+  | "not_found";
+
+/**
+ * Marks an order PAID and issues one Ticket per seat, in one transaction.
+ * Safe to call more than once (Stripe retries webhooks, and the success page calls it too):
+ * only the first call changes anything.
+ *
+ * If the hold was already released (the payment arrived after expiry), it tries to
+ * reserve the tickets again. If they've been sold to someone else it returns
+ * "needs_refund" and changes nothing.
+ */
+export async function markOrderPaid(orderId: string): Promise<MarkPaidResult> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: true, event: { select: { title: true } } },
+      });
+      if (!order) return "not_found";
+      if (order.status === "PAID") return "already_paid";
+      if (order.status === "REFUNDED") return "needs_refund";
+
+      // Claim the order. The status check in the WHERE makes this safe against a
+      // second call running at the same time: only one of them changes the row.
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, status: order.status },
+        data: { status: "PAID", expiresAt: null },
+      });
+      if (claimed.count === 0) return "already_paid";
+
+      if (order.status !== "PENDING") {
+        // The hold was released, so the stock went back. Take it again if it's still there.
+        for (const item of order.items) {
+          const reserved = await tx.$executeRaw`
+            UPDATE "TicketTier"
+            SET "quantitySold" = "quantitySold" + ${item.quantity}
+            WHERE "id" = ${item.tierId} AND "quantity" - "quantitySold" >= ${item.quantity}`;
+          if (reserved === 0) throw new LateOrderNoStock(); // rolls the whole transaction back
+        }
+      }
+
+      await tx.ticket.createMany({
+        data: order.items.flatMap((item) =>
+          Array.from({ length: item.quantity }, () => ({
+            orderId: order.id,
+            tierId: item.tierId,
+            eventId: order.eventId,
+            ownerId: order.userId,
+          })),
+        ),
+      });
+
+      const count = order.items.reduce((sum, item) => sum + item.quantity, 0);
+      await tx.notification.create({
+        data: {
+          userId: order.userId,
+          type: "ORDER_CONFIRMED",
+          title: `You're going to ${order.event.title}`,
+          body: `${count} ticket${count === 1 ? "" : "s"} confirmed.`,
+          href: "/my-tickets",
+        },
+      });
+      return "paid";
+    });
+  } catch (error) {
+    if (error instanceof LateOrderNoStock) return "needs_refund";
+    throw error;
+  }
+}
+
+/** Records that a late payment for a released order was refunded (its stock was already returned). */
+export async function markOrderRefunded(orderId: string) {
+  await prisma.order.updateMany({
+    where: { id: orderId, status: { in: ["FAILED", "CANCELLED"] } },
+    data: { status: "REFUNDED", expiresAt: null },
+  });
 }

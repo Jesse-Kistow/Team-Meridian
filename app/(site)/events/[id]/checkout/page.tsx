@@ -1,16 +1,43 @@
-import CheckoutScreen from "@/components/checkout/CheckoutScreen";
+// Step 2: US-501. "Get tickets" on the event page lands here.
+// Signed-in only (see middleware.ts); paying happens on Stripe's hosted page.
+import { Suspense } from "react";
+import { notFound } from "next/navigation";
+import EventCheckout from "@/components/checkout/EventCheckout";
+import { getPublishedEvent, remainingNow, shortDate, time } from "@/lib/events/public";
+import { MAX_TICKETS_PER_ORDER } from "@/lib/orders";
 
-// DEMO DATA. Next step (Sprint 5): load the event + tiers, and pass a server action as onCheckout that
-// creates a PENDING Order (with expiresAt) + Stripe Checkout session in one transaction, then redirects.
-export default function CheckoutPage() {
+async function CheckoutContent({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const event = await getPublishedEvent(id);
+  if (!event) notFound();
+
+  // Only plain, serializable values go to the client component
   return (
-    <CheckoutScreen
-      event={{ id: "demo", title: "After Hours", dateLabel: "Fri, Oct 23, 2026 · 7:00 PM", locationLabel: "The Glasshouse, Brooklyn", imageUrl: null }}
-      tiers={[
-        { id: "t1", name: "Early bird", description: "Same dance floor. Better deal.", priceCents: 2500, remaining: 0 },
-        { id: "t2", name: "General admission", description: "Entry + all-night good energy", priceCents: 3500, remaining: 40 },
-        { id: "t3", name: "VIP", description: "Priority entry + mezzanine access", priceCents: 6500, remaining: 8 },
-      ]}
+    <EventCheckout
+      event={{
+        id: event.id,
+        title: event.title,
+        dateLabel: `${shortDate(event.startsAt)} · ${time(event.startsAt)}`,
+        locationLabel: `${event.venue}, ${event.city}`,
+        imageUrl: event.imageUrl,
+      }}
+      tiers={event.tiers.map((tier) => ({
+        id: tier.id,
+        name: tier.name,
+        description: tier.description,
+        priceCents: tier.priceCents,
+        remaining: remainingNow(tier),
+      }))}
+      maxPerOrder={MAX_TICKETS_PER_ORDER}
     />
+  );
+}
+
+// params is a Promise, and reading it happens inside Suspense because cacheComponents is on
+export default function CheckoutPage({ params }: PageProps<"/events/[id]/checkout">) {
+  return (
+    <Suspense>
+      <CheckoutContent params={params} />
+    </Suspense>
   );
 }
