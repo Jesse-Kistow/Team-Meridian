@@ -1,4 +1,4 @@
-// lib/orders.ts  (REPLACES the Step 1 version)
+// lib/orders.ts
 // Order creation and release. Used by checkout (Steps 1-3), the webhook (Step 4) and expiry (Step 6).
 import { prisma } from "./prisma";
 
@@ -7,6 +7,11 @@ export const MAX_TICKETS_PER_ORDER = 10;
 
 // Stripe cannot charge less than 50 US cents, so cheaper (or free) orders are refused for now.
 export const MIN_CHARGE_CENTS = 50;
+
+// How long a PENDING order holds its tickets. Kept a little longer than the
+// Stripe Checkout session (31 minutes) so Stripe always gives up first, and a
+// payment can't complete after we've handed the tickets to someone else.
+export const ORDER_HOLD_MINUTES = 35;
 
 // Errors that are safe to show to the buyer. Anything else is unexpected and gets a generic message.
 export class CheckoutError extends Error {}
@@ -21,6 +26,10 @@ export async function createPendingOrder(userId: string, tierId: string, quantit
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_TICKETS_PER_ORDER) {
     throw new CheckoutError(`Choose between 1 and ${MAX_TICKETS_PER_ORDER} tickets.`);
   }
+
+  // Put back anything abandoned checkouts are still holding for this tier,
+  // so a "sold out" tier frees up as soon as old holds run out.
+  await releaseExpiredOrders({ tierId });
 
   return prisma.$transaction(
     async (tx) => {
@@ -55,6 +64,7 @@ export async function createPendingOrder(userId: string, tierId: string, quantit
           userId,
           eventId: tier.eventId,
           totalCents,
+          expiresAt: new Date(now.getTime() + ORDER_HOLD_MINUTES * 60_000),
           items: { create: { tierId, quantity, unitPriceCents: tier.priceCents } },
         },
         // Checkout needs these to describe the order to Stripe
@@ -68,8 +78,9 @@ export async function createPendingOrder(userId: string, tierId: string, quantit
 
 /**
  * Cancels a still-PENDING order and gives its tickets back.
- * Safe to call twice: only a PENDING order is changed. Returns true if it released the order.
- * Used when Stripe fails (Step 3) and later for failed or expired payments (Step 6).
+ * Safe to call twice, or from two places at once: only a PENDING order is changed,
+ * so the stock is returned exactly once. Returns true if it released the order.
+ * Used when Stripe fails (Step 3) and for failed or expired payments (Step 6).
  */
 export async function releaseOrder(orderId: string, status: "FAILED" | "CANCELLED" = "FAILED") {
   return prisma.$transaction(async (tx) => {
@@ -88,4 +99,29 @@ export async function releaseOrder(orderId: string, status: "FAILED" | "CANCELLE
     }
     return true;
   });
+}
+
+/**
+ * Cancels PENDING orders whose hold has run out and returns their tickets.
+ * Pass a tierId or eventId to only look at those orders. Returns how many were released.
+ */
+export async function releaseExpiredOrders(
+  { tierId, eventId, now = new Date() }: { tierId?: string; eventId?: string; now?: Date } = {},
+) {
+  const expired = await prisma.order.findMany({
+    where: {
+      status: "PENDING",
+      expiresAt: { lt: now },
+      ...(eventId ? { eventId } : {}),
+      ...(tierId ? { items: { some: { tierId } } } : {}),
+    },
+    select: { id: true },
+    take: 100,
+  });
+
+  let released = 0;
+  for (const order of expired) {
+    if (await releaseOrder(order.id, "CANCELLED")) released++;
+  }
+  return released;
 }
