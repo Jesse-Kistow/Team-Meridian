@@ -14,6 +14,8 @@ type Props = {
   onPublish?: (payload: EventPayload) => void | Promise<void>;
   /** Disable the buttons while a server action is running. */
   pending?: boolean;
+  /** Errors returned by the server action, shown in the same box as the form's own checks. */
+  serverErrors?: string[];
   /** Pill text next to the buttons, e.g. "DRAFT" or "DRAFT · AUTOSAVED". */
   statusLabel?: string;
   /** Where the breadcrumb and the cancel link go. */
@@ -116,6 +118,7 @@ export default function CreateEventForm({
   onSaveDraft,
   onPublish,
   pending = false,
+  serverErrors = [],
   statusLabel = "DRAFT",
   backHref = "/organizer/events",
   previewHref,
@@ -133,6 +136,9 @@ export default function CreateEventForm({
     setValues((v) => ({ ...v, [key]: value }));
   const setTier = (key: string, patch: Partial<TierInput>) =>
     setValues((v) => ({ ...v, tiers: v.tiers.map((t) => (t.key === key ? { ...t, ...patch } : t)) }));
+
+  // The form's own checks run first; server errors only show once those pass.
+  const shownErrors = errors.length > 0 ? errors : serverErrors;
 
   const totalTickets = values.tiers.reduce((s, t) => s + (Number(t.quantity) || 0), 0);
   const potentialCents = values.tiers.reduce(
@@ -192,11 +198,11 @@ export default function CreateEventForm({
         </div>
       </div>
 
-      {errors.length > 0 && (
+      {shownErrors.length > 0 && (
         <div role="alert" className="rounded-xl border border-[#F2B8B5] bg-[#FBE9E7] p-4 text-sm text-[#8C1D18]">
           <p className="mb-1 font-bold">Fix these before continuing:</p>
           <ul className="list-disc pl-5">
-            {errors.map((e) => (
+            {shownErrors.map((e) => (
               <li key={e}>{e}</li>
             ))}
           </ul>

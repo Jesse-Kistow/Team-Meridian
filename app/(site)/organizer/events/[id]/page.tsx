@@ -1,39 +1,25 @@
+import { Suspense } from "react";
+import { notFound, redirect } from "next/navigation";
 import EventDashboard from "@/components/organizer/EventDashboard";
+import { getCurrentOrganizer, getOrganizerEventDashboard } from "@/lib/events/organizer-data";
 
-// DEMO DATA. Replace with Prisma queries for the event with this id
-// (check event.organizerId === the signed-in user, then wrap the data in <Suspense> as needed).
-export default function EventDashboardPage() {
+async function Dashboard({ params }: { params: Promise<{ id: string }> }) {
+  const organizer = await getCurrentOrganizer();
+  if (!organizer) redirect("/");
+
+  const { id } = await params;
+  // Returns null for events that don't exist or belong to another organizer,
+  // so both cases look the same from outside.
+  const data = await getOrganizerEventDashboard(id, organizer.id);
+  if (!data) notFound();
+
+  return <EventDashboard {...data} checkInHref={`/organizer/events/${data.event.id}/check-in`} />;
+}
+
+export default function EventDashboardPage({ params }: PageProps<"/organizer/events/[id]">) {
   return (
-    <EventDashboard
-      event={{
-        id: "demo",
-        title: "After Hours",
-        dateLabel: "Oct 23, 2026",
-        locationLabel: "The Glasshouse",
-        imageUrl: null,
-        status: "PUBLISHED",
-        isLive: true,
-      }}
-      grossCents={932000}
-      grossChangePct={18}
-      sold={248}
-      capacity={300}
-      daily={[
-        { label: "17", count: 14 },
-        { label: "18", count: 22 },
-        { label: "19", count: 18 },
-        { label: "20", count: 31 },
-        { label: "21", count: 27 },
-        { label: "22", count: 42 },
-        { label: "23", count: 50 },
-      ]}
-      tiers={[
-        { id: "t1", name: "Early bird", sold: 50, capacity: 50, grossCents: 125000 },
-        { id: "t2", name: "General admission", sold: 160, capacity: 200, grossCents: 560000 },
-        { id: "t3", name: "VIP", sold: 38, capacity: 50, grossCents: 247000 },
-      ]}
-      checkedIn={187}
-      checkInHref="/organizer/events/demo/check-in"
-    />
+    <Suspense fallback={<p className="px-4 py-12 text-center text-sm text-[#79747F]">Loading dashboard…</p>}>
+      <Dashboard params={params} />
+    </Suspense>
   );
 }
