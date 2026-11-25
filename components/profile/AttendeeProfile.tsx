@@ -1,9 +1,19 @@
+import type { ReactNode } from "react";
 import type { User } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { HeadphonesIcon, MoonIcon, SparklesIcon, TicketIcon } from "@/components/icons";
+import { CalendarCheckIcon, SparklesIcon, TicketIcon, UsersIcon } from "@/components/icons";
+import { BADGES, type BadgeKey } from "@/lib/badges/rules";
+import { dayLabel } from "@/lib/tickets/display";
 import BadgeCard from "./BadgeCard";
 import ProfileHeader from "./ProfileHeader";
 import SettingsCard, { type SettingsItem } from "./SettingsCard";
+
+const BADGE_ICONS: Record<BadgeKey, ReactNode> = {
+  "first-event": <TicketIcon className="size-7" />,
+  "early-bird": <CalendarCheckIcon className="size-7" />,
+  "five-events": <UsersIcon className="size-7" />,
+  vip: <SparklesIcon className="size-7" />,
+};
 
 const SETTINGS: SettingsItem[] = [
   { title: "Profile details", description: "Name, account role and attendee info", action: "editProfile" },
@@ -18,13 +28,21 @@ export default async function AttendeeProfile({ user }: { user: User }) {
     where: { ticket: { ownerId: user.id } },
   });
 
-  // The last two badges need event categories and times: Sprint 9
-  const badges = [
-    { icon: <TicketIcon className="size-7" />, title: "First night out", lines: ["Your first event check-in"], earned: attended >= 1 },
-    { icon: <SparklesIcon className="size-7" />, title: "Culture regular", lines: ["Attend 5 events"], earned: attended >= 5 },
-    { icon: <HeadphonesIcon className="size-7" />, title: "Sound seeker", lines: ["Check in at 3 music events"], earned: false },
-    { icon: <MoonIcon className="size-7" />, title: "Night owl", lines: ["Check in at 3 late-night events"], earned: false },
-  ];
+  // US-903: badge definitions with the date this user earned each one (awarded at check-in)
+  const awards = await prisma.userBadge.findMany({
+    where: { userId: user.id },
+    select: { awardedAt: true, badge: { select: { key: true } } },
+  });
+  const awardedAt = new Map(awards.map((a) => [a.badge.key, a.awardedAt]));
+  const badges = BADGES.map((def) => {
+    const at = awardedAt.get(def.key);
+    return {
+      icon: BADGE_ICONS[def.key],
+      title: def.name,
+      lines: at ? [def.description, `Earned ${dayLabel(at)}`] : [def.description],
+      earned: Boolean(at),
+    };
+  });
   const earnedCount = badges.filter((badge) => badge.earned).length;
 
   const tagline =
