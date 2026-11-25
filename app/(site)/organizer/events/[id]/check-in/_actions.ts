@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentDbUser } from "@/lib/current-user";
+import { awardBadgesForCheckIn } from "@/lib/badges/award";
 import { admitTicket, findAttendees, getCheckInCounts, getOwnedEvent, type AttendeeMatch, type TicketRef } from "@/lib/checkin/check-in";
 import { cleanScannedCode, MAX_INPUT_LENGTH } from "@/lib/checkin/lookup";
 import type { ScanResult } from "@/components/organizer/types";
@@ -25,7 +26,7 @@ async function admit(ref: TicketRef | null, eventId: string): Promise<CheckInRes
   const auth = await authorize(eventId);
   if (!auth) return FORBIDDEN;
   // A value that can't be a ticket is simply "invalid", but only after the owner check
-  const result: ScanResult = ref ? await admitTicket(ref, auth.event.id, auth.me.id) : { kind: "invalid" };
+  const result: ScanResult = ref ? await admitTicket(ref, auth.event.id, auth.me.id, awardBadgesForCheckIn) : { kind: "invalid" };
   if (result.kind === "success") revalidatePath(`/organizer/events/${auth.event.id}`);
   const { checkedIn } = await getCheckInCounts(auth.event.id);
   return { ok: true, result, checkedIn };
