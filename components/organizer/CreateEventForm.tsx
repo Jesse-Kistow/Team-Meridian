@@ -92,7 +92,7 @@ export function buildPayload(v: EventFormValues): { payload?: EventPayload; erro
     if (!t.name.trim()) errors.push(`Tier ${i + 1}: name is required.`);
     else if (!Number.isFinite(price) || price < 0 || t.price === "") errors.push(`${t.name}: price must be 0 or more.`);
     else if (!Number.isInteger(qty) || qty < 1) errors.push(`${t.name}: quantity must be at least 1.`);
-    else tiers.push({ name: t.name.trim(), priceCents: Math.round(price * 100), quantity: qty });
+    else tiers.push({ ...(t.id ? { id: t.id } : {}), name: t.name.trim(), priceCents: Math.round(price * 100), quantity: qty });
   });
 
   if (errors.length || !startsAt || !endsAt) return { errors };
