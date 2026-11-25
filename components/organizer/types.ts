@@ -24,7 +24,8 @@ export type TierRow = {
 export type DailySales = { label: string; count: number };
 
 // ---- Create event form ----
-export type TierInput = { key: string; name: string; price: string; quantity: string };
+// `id` is set when editing a tier that already exists in the database.
+export type TierInput = { key: string; id?: string; name: string; price: string; quantity: string };
 
 export type EventFormValues = {
   title: string;
@@ -51,7 +52,8 @@ export type EventPayload = {
   startsAt: string; // ISO string
   endsAt: string; // ISO string
   rewardBadges: boolean;
-  tiers: { name: string; priceCents: number; quantity: number }[];
+  // `id` is present for tiers that already exist (edit form), absent for new ones.
+  tiers: { id?: string; name: string; priceCents: number; quantity: number }[];
 };
 
 // ---- Door check-in ----
