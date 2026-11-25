@@ -1,7 +1,7 @@
-import CreateEventForm from "@/components/organizer/CreateEventForm";
+import NewEventForm from "./NewEventForm";
 
-// UI only for now. Wiring (next step): pass server actions as onSaveDraft / onPublish
-// that create the Event + TicketTier rows with Prisma (see the payload type in types.ts).
+// Organizer-only: the middleware redirects everyone else, and the server actions
+// check the role again before saving.
 export default function NewEventPage() {
-  return <CreateEventForm />;
+  return <NewEventForm />;
 }
