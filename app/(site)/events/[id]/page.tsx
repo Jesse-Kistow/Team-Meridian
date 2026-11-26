@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import EventDetail from "@/components/event/EventDetail";
 import { prisma } from "@/lib/prisma";
@@ -6,6 +7,8 @@ import { getPublishedEvent, longDate, remainingNow, time } from "@/lib/events/pu
 
 async function EventContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Render per request: ticket availability depends on the current time
+  await connection();
   const event = await getPublishedEvent(id);
   if (!event) notFound();
 
