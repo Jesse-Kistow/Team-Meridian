@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 
 const isOnboarding = createRouteMatcher(["/onboarding(.*)"]);
 const isOrganizerRoute = createRouteMatcher(["/organizer(.*)"]);
-const isSignedInRoute = createRouteMatcher(["/my-tickets(.*)", "/profile(.*)"]);
+const isSignedInRoute = createRouteMatcher([
+  "/my-tickets(.*)",
+  "/profile(.*)",
+  "/checkout(.*)",
+  "/events/(.*)/checkout",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   const path = req.nextUrl.pathname;
