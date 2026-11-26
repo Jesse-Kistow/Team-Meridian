@@ -19,8 +19,7 @@ type NavLink = {
   Icon: ComponentType<{ className?: string }>;
 };
 
-// "Discover" points home until the events page exists (Sprint 4)
-const DISCOVER: NavLink = { href: "/", label: "Discover", Icon: CompassIcon };
+const DISCOVER: NavLink = { href: "/events", label: "Discover", Icon: CompassIcon };
 const PROFILE: NavLink = { href: "/profile", label: "Profile", Icon: UserIcon };
 
 const ATTENDEE_LINKS: NavLink[] = [
