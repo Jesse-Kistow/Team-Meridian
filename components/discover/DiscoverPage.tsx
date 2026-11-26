@@ -73,7 +73,14 @@ export default function DiscoverPage({
 
       {!featured && picks.length === 0 ? (
         <p className="rounded-2xl border border-[#E5E1E8] bg-white px-6 py-14 text-center text-sm text-[#79747F]">
-          No events match that search. Try another category or keyword.
+          {searchValue || activeCategory ? (
+            <>
+              No events match that search.{" "}
+              <Link href={seeAllHref} className="font-bold text-[#713EFF] hover:underline">See all events</Link>
+            </>
+          ) : (
+            "No upcoming events yet. Published events show up here."
+          )}
         </p>
       ) : (
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
@@ -104,7 +111,10 @@ export default function DiscoverPage({
           <div className="flex flex-col gap-[18px]">
             <div className="flex items-start justify-between">
               <h2 className="text-[23px] font-extrabold text-[#211E29]">Worth going out for</h2>
-              <Link href={seeAllHref} className="text-[13px] font-bold text-[#713EFF] hover:underline">See all ↗</Link>
+              {/* Unfiltered, every upcoming event is already listed, so See all only shows while a search or category is on */}
+              {(searchValue || activeCategory) && (
+                <Link href={seeAllHref} className="text-[13px] font-bold text-[#713EFF] hover:underline">See all ↗</Link>
+              )}
             </div>
             {picks.map((e) => (
               <Link key={e.id} href={`/events/${e.id}`} className="group overflow-hidden rounded-[20px] border border-[#E5E1E8] bg-white hover:shadow-md">
