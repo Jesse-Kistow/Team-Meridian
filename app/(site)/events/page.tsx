@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import DiscoverPage from "@/components/discover/DiscoverPage";
 import { prisma } from "@/lib/prisma";
 import { categoryKey, categoryPills, firstParam, toEventCard } from "@/lib/events/discover";
@@ -12,6 +13,8 @@ async function Discover({ searchParams }: { searchParams: Promise<Record<string,
   const params = await searchParams;
   const q = firstParam(params.q);
   const category = categoryKey(firstParam(params.category));
+  // Render per request: the list depends on the current time and on newly published events
+  await connection();
   const now = new Date();
 
   const upcoming = { status: "PUBLISHED" as const, endsAt: { gt: now } };
